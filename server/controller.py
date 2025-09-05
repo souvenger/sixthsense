@@ -4,6 +4,7 @@ from search import search
 from flask_cors import CORS
 import pandas as pd
 import json
+import os
 import logging
 import time
 import uuid
