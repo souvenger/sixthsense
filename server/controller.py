@@ -10,7 +10,15 @@ import time
 import uuid
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True, max_age=3600)
+# Allow requests from the deployed frontend. Avoid using wildcard with credentials.
+CORS(
+    app,
+    resources={r"/*": {"origins": [
+        "https://sixthsense-frontend.onrender.com"
+    ]}},
+    supports_credentials=False,
+    max_age=3600
+)
 
 # Configure logging once for the server
 logging.basicConfig(
