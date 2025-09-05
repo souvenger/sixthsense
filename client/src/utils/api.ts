@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = 'https://sixthsense-xryg.onrender.com/api';
 
 export const fetchWithRetry = async (url: string, retries = 3, delay = 1000) => {
   for (let i = 0; i < retries; i++) {

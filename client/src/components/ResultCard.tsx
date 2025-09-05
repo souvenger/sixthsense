@@ -78,7 +78,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:5000/summary', {
+      const response = await fetch('https://sixthsense-xryg.onrender.com/summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: link })

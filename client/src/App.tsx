@@ -67,7 +67,7 @@ const ResultsPage = () => {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch('http://localhost:5000/search', {
+      const response = await fetch('https://sixthsense-xryg.onrender.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery }),

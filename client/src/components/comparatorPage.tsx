@@ -37,7 +37,7 @@ const WebsiteComparison = () => {
             try {
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), 20000);
-                const response = await fetch("http://127.0.0.1:5000/compare", {
+                const response = await fetch("https://sixthsense-xryg.onrender.com/compare", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ url1, url2, title1, title2 }),
