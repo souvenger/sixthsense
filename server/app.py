@@ -14,7 +14,8 @@ app = Flask(__name__)
 CORS(
     app,
     resources={r"/*": {"origins": [
-        "https://sixthsense-frontend.onrender.com"
+        "https://sixthsense-frontend.onrender.com",
+        "https://sixthsense-nu.vercel.app"
     ]}},
     supports_credentials=False,
     max_age=3600
