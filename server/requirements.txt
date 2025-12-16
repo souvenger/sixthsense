@@ -6,4 +6,5 @@ beautifulsoup4
 langchain-groq
 python-dotenv
 langchain_community
-langchain
+langchain-core
+langchain-text-splitters
