@@ -1,3 +1,4 @@
+import { BASE_URL } from './config';
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import ResultCard from './components/ResultCard';
@@ -67,7 +68,7 @@ const ResultsPage = () => {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch('https://sixthsense-xryg.onrender.com/search', {
+      const response = await fetch(`${BASE_URL}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery }),

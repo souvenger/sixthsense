@@ -1,3 +1,4 @@
+import { BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, TrendingUp, ChevronUp, ChevronDown, Sparkles, Split } from 'lucide-react';
 
@@ -78,7 +79,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
     setError(null);
 
     try {
-      const response = await fetch('https://sixthsense-xryg.onrender.com/summary', {
+      const response = await fetch(`${BASE_URL}/summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: link })
