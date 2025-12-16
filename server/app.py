@@ -14,7 +14,6 @@ app = Flask(__name__)
 CORS(
     app,
     resources={r"/*": {"origins": [
-        "https://sixthsense-frontend.onrender.com",
         "https://sixthsense-nu.vercel.app"
     ]}},
     supports_credentials=False,
@@ -117,19 +116,27 @@ def search_form():
 
     return jsonify({'results': results.to_dict(orient='records'), 'summary_result': sentences})
 
-@app.route('/compare', methods=['POST'])
+@app.route('/compare-results', methods=['GET', 'POST'])
 def compare_webpages():
     """
     API to compare two webpages.
-    Request Body (JSON):
+    For POST, Request Body (JSON):
         - url1: The URL of the first webpage.
         - url2: The URL of the second webpage.
+    For GET, Query Parameters:
+        - url1, url2, title1, title2
     """
-    data = request.get_json(silent=True) or {}
-    url1 = data.get('url1') if data else None
-    url2 = data.get('url2') if data else None
-    title1 = data.get('title1') if data else None
-    title2 = data.get('title2') if data else None
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        url1 = data.get('url1')
+        url2 = data.get('url2')
+        title1 = data.get('title1')
+        title2 = data.get('title2')
+    else:  # GET request
+        url1 = request.args.get('url1')
+        url2 = request.args.get('url2')
+        title1 = request.args.get('title1')
+        title2 = request.args.get('title2')
 
     if not url1 or not url2:
         return jsonify({"error": "Missing 'url1' or 'url2' in request body", "request_id": getattr(g, 'request_id', '-') }), 400
