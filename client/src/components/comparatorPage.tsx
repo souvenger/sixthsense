@@ -37,11 +37,9 @@ const WebsiteComparison = () => {
         const fetchData = async () => {
             try {
                 const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 20000);
-                const response = await fetch(`${BASE_URL}/compare`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url1, url2, title1, title2 }),
+                const timeout = setTimeout(() => controller.abort(), 60000); // Increased timeout for long-running LLM calls
+                const response = await fetch(`${BASE_URL}/compare-results?url1=${encodeURIComponent(url1)}&url2=${encodeURIComponent(url2)}&title1=${encodeURIComponent(title1 || '')}&title2=${encodeURIComponent(title2 || '')}`, {
+                    method: "GET",
                     signal: controller.signal,
                 });
                 clearTimeout(timeout);
