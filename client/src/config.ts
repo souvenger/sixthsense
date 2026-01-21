@@ -1,1 +1,1 @@
-export const BASE_URL = 'https://sixthsense-production-09e4.up.railway.app';
+export const BASE_URL = 'https://sixthsense-1.onrender.com/';
