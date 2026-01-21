@@ -8,3 +8,7 @@ python-dotenv
 langchain_community
 langchain-core
 langchain-text-splitters
+aiohttp
+Flask-Limiter
+flask[async]
+duckduckgo-search

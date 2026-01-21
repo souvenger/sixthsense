@@ -2,22 +2,37 @@ from flask import Flask, request, jsonify, g
 from services import compare_websites, get_summary, get_summerized_results
 from search import search
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import pandas as pd
 import json
 import os
 import logging
 import time
 import uuid
+import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-# Allow requests from the deployed frontend. Avoid using wildcard with credentials.
+
+# Security: Load allowed origins from env
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS").split(",")
+
 CORS(
     app,
-    resources={r"/*": {"origins": [
-        "https://sixthsense-nu.vercel.app"
-    ]}},
+    resources={r"/*": {"origins": ALLOWED_ORIGINS}},
     supports_credentials=False,
     max_age=3600
+)
+
+# Rate Limiting (In-memory for now)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
 )
 
 # Configure logging once for the server
@@ -27,7 +42,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("server")
 
-
 class RequestIdFilter(logging.Filter):
     def filter(self, record):
         try:
@@ -36,10 +50,8 @@ class RequestIdFilter(logging.Filter):
             record.request_id = '-'
         return True
 
-
 for handler in logging.getLogger().handlers:
     handler.addFilter(RequestIdFilter())
-
 
 @app.before_request
 def add_request_context():
@@ -50,12 +62,9 @@ def add_request_context():
         extra={"request_id": g.request_id}
     )
 
-
 @app.after_request
 def add_response_headers(response):
-    # Add correlation id to response
     response.headers['X-Request-ID'] = getattr(g, 'request_id', '-')
-    # Basic access log
     try:
         duration_ms = int((time.time() - getattr(g, 'start_time', time.time())) * 1000)
         logger.info(
@@ -66,7 +75,6 @@ def add_response_headers(response):
         pass
     return response
 
-
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
     logger.exception("Unhandled server error", extra={"request_id": getattr(g, 'request_id', '-')})
@@ -75,57 +83,55 @@ def handle_unexpected_error(e):
         "request_id": getattr(g, 'request_id', '-')
     }), 500
 
-# Simple in-memory storage to replace global variables
-search_data = {
-    'query': '',
-    'results': pd.DataFrame(),
-    'snippets': ''
-}
-
 @app.route('/')
 def home():
     return "Welcome"
 
 @app.route("/search", methods=['POST'])
-def search_form():
+@limiter.limit("10 per minute")
+async def search_form():
     body = request.get_json(silent=True) or {}
     query = (body.get('query') or '').strip()
     if not query:
         return jsonify({"error": "Missing or empty 'query' in request body", "request_id": getattr(g, 'request_id', '-') }), 400
-    results = search(query)
     
-    # Update search data
-    search_data['query'] = query
-    search_data['results'] = results
+    # Async Search
+    results = await search(query)
     
-    # Use only the top 3 results for summary input and join with separators
+    # Calculate snippets for summary
     top_snippets = results['snippet'].head(3).fillna('') if not results.empty else []
-    search_data['snippets'] = '. '.join(top_snippets) if len(top_snippets) > 0 else ''
+    snippets_text = '. '.join(top_snippets) if len(top_snippets) > 0 else ''
 
-    # Generate summary directly here to keep it consistent with current results
-    sentences: list[str] = []
+    # Generate summary directly
+    sentences = []
     try:
-        if search_data['snippets']:
-            summary_result = get_summerized_results(search_data['snippets'])
+        if snippets_text:
+            summary_result = await get_summerized_results(snippets_text)
             if summary_result:
-                start_idx, end_idx = summary_result.find('['), summary_result.find(']')
-                sentences = summary_result[start_idx + 1:end_idx].split('|') if start_idx != -1 and end_idx != -1 else []
+                # Basic parsing validity check logic from original code
+                # Note: original logic assumed specific format with brackets and pipes
+                # We attempt to parse it, but fallback gracefully
+                start_idx, end_idx = summary_result.find('['), summary_result.to_str().rfind(']') if hasattr(summary_result, 'to_str') else summary_result.rfind(']')
+                # If cannot find brackets, just split by pipe or return full text if no pipe
+                if start_idx != -1 and end_idx != -1:
+                    sentences = summary_result[start_idx + 1:end_idx].split('|')
+                else:
+                     # Fallback: if model didn't output brackets
+                    sentences = summary_result.split('|')
+                
+                # Clean up whitespace
+                sentences = [s.strip() for s in sentences if s.strip()]
+                
     except Exception:
         logger.exception("Failed to generate summary in /search", extra={"request_id": getattr(g, 'request_id', '-')})
         sentences = []
 
     return jsonify({'results': results.to_dict(orient='records'), 'summary_result': sentences})
 
+
 @app.route('/compare-results', methods=['GET', 'POST'])
-def compare_webpages():
-    """
-    API to compare two webpages.
-    For POST, Request Body (JSON):
-        - url1: The URL of the first webpage.
-        - url2: The URL of the second webpage.
-    For GET, Query Parameters:
-        - url1, url2, title1, title2
-    """
+@limiter.limit("5 per minute") 
+async def compare_webpages():
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         url1 = data.get('url1')
@@ -139,10 +145,10 @@ def compare_webpages():
         title2 = request.args.get('title2')
 
     if not url1 or not url2:
-        return jsonify({"error": "Missing 'url1' or 'url2' in request body", "request_id": getattr(g, 'request_id', '-') }), 400
+        return jsonify({"error": "Missing 'url1' or 'url2'", "request_id": getattr(g, 'request_id', '-') }), 400
     
     try:
-        comparison_result = compare_websites(url1, url2)
+        comparison_result = await compare_websites(url1, url2)
         final_comparison_data = convert_into_compare_format(comparison_result, url1, url2, title1, title2)
         
         if not final_comparison_data:
@@ -162,18 +168,25 @@ def convert_into_compare_format(original_data, url1, url2, title1, title2):
         strengths = original_data.get("strengths", {})
         limits = original_data.get("limitations", {})
         website_keys = list(key_info.keys())
-        if len(website_keys) < 2:
+        # If model returned "web1", "web2" explicitly as keys as per prompt
+        if "web1" in website_keys and "web2" in website_keys:
+             keys_to_use = ["web1", "web2"]
+        elif len(website_keys) >= 2:
+            keys_to_use = website_keys[:2]
+        else:
+            # Fallback if model messed up keys
             return None
+
         temp = []
-        for url, title, web in zip([url1, url2], [title1, title2], website_keys[:2]):
+        for url, title, web_key in zip([url1, url2], [title1, title2], keys_to_use):
             website_entry = {
                 "url": url,
                 "title": title,
-                "keyPoints": key_info.get(web, []),
-                "uniqueFeatures": unique.get(web, []),
-                "contentStructure": structure.get(web, {}),
-                "advantages": strengths.get(web, []),
-                "limitations": limits.get(web, [])
+                "keyPoints": key_info.get(web_key, []),
+                "uniqueFeatures": unique.get(web_key, []),
+                "contentStructure": structure.get(web_key, {}),
+                "advantages": strengths.get(web_key, []),
+                "limitations": limits.get(web_key, [])
             }
             temp.append(website_entry)
         return temp
@@ -181,12 +194,8 @@ def convert_into_compare_format(original_data, url1, url2, title1, title2):
         return None
 
 @app.route('/summary', methods=['POST'])
-def get_summary_api():
-    """
-    API to get a cleaned and summarized result of a webpage.
-    Request Body (JSON):
-        - url: The URL of the webpage.
-    """
+@limiter.limit("10 per minute")
+async def get_summary_api():
     data = request.get_json(silent=True) or {}
     url = data.get('url') if data else None
 
@@ -194,7 +203,7 @@ def get_summary_api():
         return jsonify({"error": "Missing 'url' in request body", "request_id": getattr(g, 'request_id', '-') }), 400
 
     try:
-        summary = get_summary(url)
+        summary = await get_summary(url)
         if not summary:
             return jsonify({"error": "Failed to process the webpage", "request_id": getattr(g, 'request_id', '-') }), 500
         return jsonify({"summary": summary}), 200
@@ -203,39 +212,43 @@ def get_summary_api():
         return jsonify({"error": str(e), "request_id": getattr(g, 'request_id', '-') }), 500
 
 @app.route('/query-summary', methods=['GET'])
-def query_summary():
+@limiter.limit("10 per minute")
+async def query_summary():
     """
-    API to get summarized results for a query.
+    Stateless /query-summary. Requires 'q' param to perform search + summarize.
     """
     try:
-        # If snippets are empty, try to build them from provided query param
-        if not search_data['snippets']:
-            q = (request.args.get('q') or '').strip()
-            if q:
-                results = search(q)
-                search_data['results'] = results
-                top_snippets = results['snippet'].head(3).fillna('') if not results.empty else []
-                search_data['snippets'] = '. '.join(top_snippets) if len(top_snippets) > 0 else ''
+        q = (request.args.get('q') or '').strip()
+        if not q:
+            # Stateless: we cannot summarize nothing.
+            return jsonify({"summary_result": [], "error": "Query 'q' parameter is required for stateless summary"}), 400
+            
+        # Perform search to get content to summarize
+        results = await search(q)
+        top_snippets = results['snippet'].head(3).fillna('') if not results.empty else []
+        snippets_text = '. '.join(top_snippets) if len(top_snippets) > 0 else ''
 
-        if not search_data['snippets']:
-            # No snippets to summarize; return empty list gracefully
+        if not snippets_text:
             return jsonify({"summary_result": []}), 200
-
-        summary_result = get_summerized_results(search_data['snippets'])
-        # print(summary_result)
+            
+        summary_result = await get_summerized_results(snippets_text)
         
         if not summary_result:
             return jsonify({"summary_result": []}), 200
 
-        # Extract sentences directly from the summary result
-        start_idx, end_idx = summary_result.find('['), summary_result.find(']')
-        sentences = summary_result[start_idx + 1:end_idx].split('|') if start_idx != -1 and end_idx != -1 else []
+        # Parsing logic (similar to search_form)
+        start_idx, end_idx = summary_result.find('['), summary_result.rfind(']')
+        if start_idx != -1 and end_idx != -1:
+             sentences = summary_result[start_idx + 1:end_idx].split('|')
+        else:
+             sentences = summary_result.split('|')
 
+        sentences = [s.strip() for s in sentences if s.strip()]
         return jsonify({"summary_result": sentences}), 200
     except Exception as e:
         logger.exception("Error in /query-summary", extra={"request_id": getattr(g, 'request_id', '-')})
         return jsonify({"error": str(e), "request_id": getattr(g, 'request_id', '-') }), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # Render gives PORT
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
