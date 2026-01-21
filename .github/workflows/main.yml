@@ -2,24 +2,18 @@ name: Ping APIs every 10 minutes
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # Every 10 minutes
-  # workflow_dispatch:        # Allow manual trigger
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
 
 jobs:
   trigger-apis:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Call API 1
+      - name: Call Frontend
         run: |
-          curl -X GET "https://sixthsense-frontend.onrender.com/" \
-          -H "Content-Type: application/json"
+          curl -I https://sixthsense-frontend.onrender.com/
 
-      - name: Call API 2
+      - name: Call Backend
         run: |
-          curl -X GET "https://sixthsense-1.onrender.com" \
-          -H "Content-Type: application/json" \
-          -d '{"source":"github-cron"}'
-          
-
-      # Add more APIs if needed
+          curl -I https://sixthsense-1.onrender.com/
