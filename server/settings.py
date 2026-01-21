@@ -1,5 +1,4 @@
 import os
 
-# Google Search settings removed
-pass 
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 

@@ -1,46 +1,59 @@
-from duckduckgo_search import DDGS
+import aiohttp
 import pandas as pd
 import logging
-import asyncio
+from settings import SERPAPI_KEY
 
 logger = logging.getLogger("search")
 
-def _search_sync(query, max_results):
-    results = []
-    try:
-        with DDGS() as ddgs:
-            # DDGS().text is a generator in some versions, or returns list
-            # We iterate to be safe
-            ddg_gen = ddgs.text(query, max_results=max_results, region="in-en")
-            if ddg_gen:
-                for r in ddg_gen:
-                    results.append(r)
-    except Exception as e:
-        logger.warning(f"DuckDuckGo search failed: {e}")
-        return []
-    return results
-
-async def search_api(query, max_results=30):
+async def search_api(query, max_results=10):
     if not query:
         return pd.DataFrame()
     
-    # Run synchronous search in a separate thread to avoid blocking main loop
-    results = await asyncio.to_thread(_search_sync, query, max_results)
+    if not SERPAPI_KEY:
+        logger.error("SERPAPI_KEY is missing in settings")
+        return pd.DataFrame(columns=["link", "rank", "snippet", "title"])
+
+    params = {
+        "engine": "google",
+        "q": query,
+        "api_key": SERPAPI_KEY,
+        "num": max_results,
+        "gl": "in", # India
+        "hl": "en"  # English
+    }
+    
+    url = "https://serpapi.com/search.json"
+    
+    results = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=10) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                # SerpApi puts organic results in 'organic_results'
+                organic_results = data.get("organic_results", [])
+                for result in organic_results:
+                    results.append({
+                        "link": result.get("link"),
+                        "title": result.get("title"),
+                        "snippet": result.get("snippet") or result.get("description", ""),
+                        "rank": result.get("position")
+                    })
+    except Exception as e:
+        logger.warning(f"SerpApi search failed: {e}")
+        return pd.DataFrame(columns=["link", "rank", "snippet", "title"])
 
     if not results:
         return pd.DataFrame(columns=["link", "rank", "snippet", "title"])
         
-    # DuckDuckGo returns keys: 'href', 'title', 'body'
     res_df = pd.DataFrame(results)
     
-    rename_map = {
-        'href': 'link',
-        'body': 'snippet'
-    }
-    res_df = res_df.rename(columns=rename_map)
+    # Ensure rank is sequential if position is missing or inconsistent
+    if "rank" not in res_df.columns or res_df["rank"].isnull().any():
+        res_df["rank"] = list(range(1, res_df.shape[0] + 1))
     
-    res_df["rank"] = list(range(1, res_df.shape[0] + 1))
-    
+    # Ensure all required columns exist
     for col in ["link", "rank", "snippet", "title"]:
         if col not in res_df.columns:
             res_df[col] = "" 
