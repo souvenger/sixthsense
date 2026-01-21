@@ -18,7 +18,8 @@ jobs:
       - name: Call API 2
         run: |
           curl -X GET "https://sixthsense-1.onrender.com" \
-          -H "Content-Type: application/json" 
+          -H "Content-Type: application/json" \
+          -d '{"source":"github-cron"}'
           
 
       # Add more APIs if needed
